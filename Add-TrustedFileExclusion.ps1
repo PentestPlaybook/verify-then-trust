@@ -100,6 +100,13 @@ if ($PSCmdlet.ParameterSetName -eq "ByURL") {
     }
 
     $FilePath = Join-Path (Resolve-Path $Destination) $fileName
+
+    # Clear read-only if the file already exists from a previous run
+    if (Test-Path $FilePath) {
+        Set-ItemProperty -Path $FilePath -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+        Write-Host "[+] Existing file found - cleared read-only for overwrite." -ForegroundColor Cyan
+    }
+
     Write-Host "[+] Downloading $fileName..." -ForegroundColor Cyan
     try {
         Invoke-WebRequest -Uri $URL -OutFile $FilePath -UseBasicParsing -ErrorAction Stop
