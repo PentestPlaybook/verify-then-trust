@@ -3,20 +3,26 @@
 .SYNOPSIS
     Adds a file-specific Defender exclusion then verifies the hash.
 
-    For files already on disk that Defender has flagged as known threats,
-    path exclusions do not reliably unblock file reads - the I/O filter
-    still intercepts them even after Add-MpPreference. This script briefly
-    disables real-time monitoring only for the hash computation (typically
-    under one second), then immediately re-enables it. The file is not
-    executed during this window.
+.DESCRIPTION
+    Two-step workflow:
 
-    If the hash does not match the expected value, the exclusion is removed.
+    Step 1 - Get the hash (run without -ExpectedHash):
+        The script adds a temporary exclusion, computes the SHA256, removes
+        the exclusion, and displays the hash. Paste that hash into VirusTotal
+        and search by hash (not URL - URL results are cached and may be stale).
+
+    Step 2 - Trust the file (run with -ExpectedHash):
+        The script adds the exclusion, recomputes the hash, and compares it
+        against the expected value. On match: sets read-only, applies SACL,
+        writes to hash registry, optionally notifies Pager. On mismatch:
+        removes exclusion immediately.
 
 .PARAMETER FilePath
-    Full path to the file to trust. Must already exist on disk.
+    Full path to the file. Must exist on disk.
 
 .PARAMETER ExpectedHash
-    SHA256 hash verified on VirusTotal or the official release page.
+    SHA256 verified on VirusTotal by hash search. Omit on first run to
+    compute and display the hash.
 
 .PARAMETER PagerIP
     Tailscale IP of the Pager. Optional - omit to skip notification.
@@ -25,6 +31,10 @@
     TCP port of the Pager netcat listener. Defaults to 9999.
 
 .EXAMPLE
+    # Step 1 - compute hash and verify on VirusTotal
+    .\Add-TrustedFileExclusion.ps1 -FilePath "F:\nanodump.x64.exe"
+
+    # Step 2 - trust the file after verification
     .\Add-TrustedFileExclusion.ps1 `
         -FilePath     "F:\nanodump.x64.exe" `
         -ExpectedHash "AD9E4DDCE68A34F0BA3010E66286BC3AA056043C7DCA7A22C3222A279614025A"
@@ -34,21 +44,17 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$FilePath,
 
-    [Parameter(Mandatory=$true)]
-    [string]$ExpectedHash,
-
-    [string]$PagerIP  = "",
-    [int]$PagerPort   = 9999,
+    [string]$ExpectedHash = "",
+    [string]$PagerIP      = "",
+    [int]$PagerPort       = 9999,
     [string]$RegistryPath = "$env:ProgramData\SecurityBaseline\trusted_hashes.json"
 )
 
 $ErrorActionPreference = "Stop"
-$fileName     = Split-Path $FilePath -Leaf
-$expectedNorm = $ExpectedHash.ToUpper().Trim()
+$fileName = Split-Path $FilePath -Leaf
 
 Write-Host ""
-Write-Host "File:     $FilePath"
-Write-Host "Expected: $expectedNorm"
+Write-Host "File: $FilePath"
 Write-Host ""
 
 if (-not (Test-Path $FilePath)) {
@@ -56,16 +62,11 @@ if (-not (Test-Path $FilePath)) {
     exit 1
 }
 
-# Add file-specific exclusion
+# Add exclusion so Defender does not block the file read
 Add-MpPreference -ExclusionPath $FilePath
-Write-Host "[+] Exclusion added for: $FilePath" -ForegroundColor Cyan
-
-# Compute hash
-# The path exclusion is already in place. Wait for it to propagate
-# before reading the file - Add-MpPreference returns before the
-# Defender service has fully applied the exclusion.
 Start-Sleep -Seconds 3
 
+# Compute hash
 $actualHash = $null
 try {
     $actualHash = (Get-FileHash -Path $FilePath -Algorithm SHA256).Hash
@@ -75,6 +76,27 @@ try {
     exit 1
 }
 
+# Step 1 mode - no ExpectedHash provided
+# Display hash, remove exclusion, direct user to VirusTotal
+if ($ExpectedHash -eq "") {
+    Remove-MpPreference -ExclusionPath $FilePath -ErrorAction SilentlyContinue
+    Write-Host "SHA256: $actualHash" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Search this hash on VirusTotal:" -ForegroundColor Yellow
+    Write-Host "  https://www.virustotal.com/gui/search/$actualHash" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Do not use the URL analysis - search by hash to get results" -ForegroundColor Yellow
+    Write-Host "for the exact file you have, not a cached version." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Once verified, re-run with -ExpectedHash to trust the file:" -ForegroundColor Gray
+    Write-Host "  .\Add-TrustedFileExclusion.ps1 -FilePath `"$FilePath`" -ExpectedHash `"$actualHash`"" -ForegroundColor Gray
+    Write-Host ""
+    exit 0
+}
+
+# Step 2 mode - ExpectedHash provided, compare and proceed
+$expectedNorm = $ExpectedHash.ToUpper().Trim()
+Write-Host "Expected: $expectedNorm"
 Write-Host "Actual:   $actualHash"
 Write-Host ""
 
@@ -86,7 +108,7 @@ if ($actualHash -ne $expectedNorm) {
 }
 
 Write-Host "PASS  Hash verified." -ForegroundColor Green
-Write-Host "[+] Exclusion confirmed. Hash matches expected value." -ForegroundColor Green
+Write-Host "[+] Exclusion confirmed." -ForegroundColor Green
 
 # Set read-only (TOCTOU mitigation)
 Set-ItemProperty -Path $FilePath -Name IsReadOnly -Value $true
