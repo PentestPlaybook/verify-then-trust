@@ -60,7 +60,7 @@ then applies a file-specific Defender exclusion and integrity monitoring.
 **Parameters:**
 | Parameter | Required | Description |
 |---|---|---|
-| `-FilePath` | Yes | Full path to the file. Used as download destination if -URL provided. Accepts a directory - filename derived from URL. |
+| `-FilePath` | Yes | Full path to the file. Used as download destination if -URL provided. Accepts a directory for direct file URLs — filename derived from URL. ZIP URLs require a full file path including the target filename to extract. |
 | `-URL` | No | Download URL. GitHub blob/tree URLs converted to raw automatically. ZIP archives supported — script extracts the target filename from inside the archive. |
 | `-ExpectedHash` | No | Optional safety check. Verifies hash matches a previously known value before prompting. |
 | `-PagerIP` | No | Tailscale IP of the Pager - omit to skip notification |
@@ -251,7 +251,10 @@ independent. The exclusion prevents quarantine; behavioral detection operates at
 and cannot be bypassed by an exclusion.
 
 ```cmd
+# Default output - procdump names the file automatically
 .\lsass_procdump.bat
+
+# Custom output path
 .\lsass_procdump.bat "F:\dumps\"
 .\lsass_procdump.bat "F:\dumps\lsass.dmp"
 ```
