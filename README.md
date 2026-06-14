@@ -102,6 +102,7 @@ Otherwise (new file or URL download):
 
 # File already on disk
 .\Add-TrustedFileExclusion.ps1 -FilePath "F:\nanodump.x64.exe"
+.\Add-TrustedFileExclusion.ps1 -FilePath "F:\mimikatz.exe"
 
 # Download to directory - filename derived from URL
 .\Add-TrustedFileExclusion.ps1 -FilePath "F:\" -URL "https://github.com/fortra/nanodump/blob/main/dist/nanodump.x64.exe"
