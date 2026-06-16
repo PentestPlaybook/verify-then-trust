@@ -92,4 +92,3 @@ ssh-keygen -f '~/.ssh/known_hosts' -R '<WINDOWS_IP>'
 chmod +x kali-dump.sh
 ./kali-dump.sh
 ```
-```
